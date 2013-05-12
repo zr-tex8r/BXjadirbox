@@ -1,0 +1,355 @@
+%
+% bxjadirbox.sty
+%
+%% package declaration
+\NeedsTeXFormat{LaTeX2e}
+\ProvidesPackage{bxjadirbox}[2013/06/01]
+
+%%
+\def\xx@pkgname{bxjadirbox}
+\def\xx@error{\PackageError\xx@pkgname}
+\def\xx@warn{\PackageWarning\xx@pkgname}
+\def\xx@info{\PackageWarning\xx@pkgname}
+\providecommand\bxDebug[1]{}
+%
+\def\xx@err@ivbxc#1{%
+  \xx@error{Invalid box command \string#1}\@ehc
+}
+\def\xx@err@ukdir#1{%
+  \xx@error{Unknown direction '#1'}\@ehc
+}
+\def\xx@err@usdch#1#2{%
+  \xx@error{Unsupported direction change (#1->#2)}\@ehc
+}
+
+\endlinechar=-1
+%--------------------------------------- helpers
+
+%% variables
+\newbox\xx@tempbox
+
+%% \xx@if@primitive\CS
+\def\xx@if@primitive#1{
+  \edef\xx@tempa{\string#1}
+  \edef\xx@tempb{\meaning#1}
+  \ifx\xx@tempa\xx@tempb \expandafter\@firstofone
+  \else \expandafter\@gobble
+  \fi
+}
+
+%% \ifxx@in@ptex
+\newif\ifxx@in@ptex \xx@in@ptexfalse
+\xx@if@primitive\kanjiskip{
+  \xx@in@ptextrue
+}
+
+%% \ifxx@in@Xetex
+\newif\ifxx@in@xetex \xx@in@xetexfalse
+\xx@if@primitive\XeTeXrevision{
+  \xx@in@xetextrue
+}
+
+%% \ifxx@in@luatex
+\newif\ifxx@in@luatex \xx@in@luatexfalse
+\xx@if@primitive\luatexrevision{
+  \xx@in@luatextrue
+}
+
+%% \xx@do@after@setbox
+% Makes a promise that \xx@do be executed after completing
+% \setbox that follows.
+\def\xx@do@after@setbox{
+  \afterassignment\xx@do@after@setbox@a
+}
+\def\xx@do@after@setbox@a{
+  \aftergroup\xx@do
+}
+
+%% \xx@with@burst\CS
+\def\xx@with@burst#1{
+  \expandafter#1\romannumeral-`>
+}
+
+%--------------------------------------- driver choise
+
+%% driver setting procedures
+\def\xx@driver@@plain{\relax}
+\let\xx@driver@@ptex\@empty
+\let\xx@driver@@xetex\@empty
+\ifxx@in@ptex\else
+  \def\xx@driver@@ptex{
+    \xx@error{The engine does not support driver 'ptex'}
+    \@ehc
+  }
+\fi
+
+%% \xx@driver@setup{<driver>}
+\def\xx@driver@setup#1{%
+  \expandafter\g@addto@macro\csname xx@driver@@#1\endcsname
+}
+
+%%<*> \dirboxinitialize
+\@onlypreamble\dirboxinitialize
+\newcommand*\dirboxinitialize{
+  \ifxx@in@ptex
+    \def\xx@tempa{ptex}
+  \else\ifxx@in@xetex
+    \def\xx@tempa{xetex}
+  \else\ifxx@in@luatex
+    \def\xx@tempa{xetex}
+  \else
+    \def\xx@tempa{plain}
+    \@ifpackageloaded{CJKvert}{
+      \def\xx@tempa{CJKvert}
+    }{}
+  \fi\fi\fi
+  \dirboxinitializewith\xx@tempa
+}
+
+%%<*> \dirboxinitializewith
+\@onlypreamble\dirboxinitializewith
+\newcommand*\dirboxinitializewith[1]{ 
+  \edef\xx@driver{#1}
+  \expandafter\let\expandafter\xx@tempa
+   \csname xx@driver@@\xx@driver\endcsname
+  \ifx\xx@tempa\relax
+    \xx@error{Unknown driver '\xx@driver' specified}
+     {Driver 'plain' is used instead.}
+    \def\xx@driver{plain}
+    \xx@driver@@plain
+  \else
+    \xx@tempa
+  \fi
+  \xx@info{Initialized with driver '\xx@driver'}
+}
+
+%% begin-document hook
+\AtBeginDocument{
+  \dirboxinitialize
+}
+
+%--------------------------------------- level-1
+
+\@namedef{xx@bc\string\vbox}{\xx@do\vbox}
+\@namedef{xx@bc\string\vtop}{\xx@do\vbox}
+\@namedef{xx@bc\string\vcenter}{\xx@do\vbox}
+\@namedef{xx@bc\string\hbox}{\xx@do\hbox}
+\@namedef{xx@bc\string\setbox}{\xx@handle@setbox}
+\@namedef{xx@bc\string\global}{\xx@handle@global}
+
+%% \xx@dirbox@error\CS
+\def\xx@dirbox@error#1{
+  \xx@err@ivbxc#1
+  \vbox
+}
+
+%%<+> \UseDirBoxTateInYoko{<box-reg>}
+\newcommand*\UseDirBoxTateInYoko[1]{
+  \vbox{
+    \hbox{\rotatebox{-90}{\copy#1}}
+    \kern\z@
+  }%
+}
+
+%%<+> \UseDirBoxYokoInTate{<box-reg>}
+\newcommand*\UseDirBoxYokoInTate[1]{
+  \vbox{
+    \hbox{\rotatebox{90}{\copy#1}}
+    \kern-.5\wd#1\relax
+    \hrule\@width\z@\@height\z@\@depth.5\wd#1\relax
+  }%
+}
+
+%%<+> \RawDirBoxTateInYoko[[\global]\setbox<box-reg>=]
+%       \BOXCMD<box-spec>{<text>}
+% (where \BOXCMD is one of \vbox / \vtop / \vcenter / \hbox
+\newcommand\RawDirBoxTateInYoko{
+  \let\xx@do@usebox\UseDirBoxTateInYoko
+  \xx@dirbox@gen
+}
+
+%%<+> \RawDirBoxTateInYoko[[\global]\setbox<box-reg>=]
+%       \BOXCMD<box-spec>{<text>}
+% (where \BOXCMD is one of \vbox / \vtop / \vcenter / \hbox
+\newcommand\RawDirBoxYokoInTate{
+  \let\xx@do@usebox\UseDirBoxYokoInTate
+  \xx@rdirbox@gen
+}
+
+%% \xx@rdirbox@gen...
+\def\xx@rdirbox@gen{
+  \let\xx@do\xx@rdirbox@gen@b
+  \let\xx@do@assign\@empty
+  \xx@with@burst\xx@rdirbox@gen@a
+}
+  % #1 is either \BOXCMD, \setbox or \global
+\def\xx@rdirbox@gen@a#1{
+  \@nameuse{xx@bc\meaning#1}\xx@rdirbox@error#1%
+  % if #1 is unexpected thing, then \@nameuse results in
+  % \relax and \xx@rdirbox@error is invoked.
+}
+  % #2(= \xx@rdirbox@error) is discarded.
+\def\xx@rdirbox@gen@b#1#2#3{
+  \let\xx@do@boxcmd#3% = \BOXCMD
+  \let\xx@do\xx@rdirbox@gen@c
+  \xx@do@after@setbox
+  \setbox\xx@tempbox=#1% 'inner' box command
+}
+  % Invoked after \setbox is done.
+\def\xx@rdirbox@gen@c{
+  \xx@do@assign% '\setbox...=' or empty
+  \xx@do@boxcmd{\xx@do@usebox\xx@tempbox}%
+  \DirBoxPostProcess
+  \let\DirBoxPostProcess\relax
+}
+
+%% \xx@handle@global...
+  % Checks if '\setbox' really follows
+\def\xx@handle@global#1#2\setbox{ 
+  \xx@handle@setbox@a\global\setbox
+}
+
+%% \xx@handle@setbox...
+\def\xx@handle@setbox#1#2{
+  \xx@handle@setbox@a\setbox
+}
+  % Called as \xx@handle@setbox@a[\global]\setbox...=\BOXCMD
+  % #2 is picked up so as to gobble spaces.
+\def\xx@handle@setbox@a#1=#2{
+  \def\xx@do@assign{#1=}
+  \xx@with@burst\xx@rdirbox@gen@a#2%
+}
+
+%% \DirBoxPostProcess
+\let\DirBoxPostProcess\@empty
+
+%--------------------------------------- level-2 
+
+\providecommand*\SwitchFontToYoko{
+\typeout{[[SwitchFontToYoko]]}
+}
+\providecommand*\SwitchFontToTate{
+\typeout{[[SwitchFontToTate]]}
+}
+
+%--------------------------------------- level-2 
+
+%% \xx@curr@dir
+\def\xx@dir@dflt{*}
+\def\xx@dir@inv{?}
+\let\xx@dir@@y\xx@dir@dflt
+\def\xx@dir@@t{t}
+\let\xx@curr@dir\xx@dir@dflt
+
+%%<+> \SetCurrentBoxDir{<dir>}
+\newcommand*\SetCurrentBoxDir[1]{
+  \expandafter\let\expandafter\xx@curr@dir
+   \csname xx@dir@@#1\endcsname
+  \ifx\xx@curr@dir\relax
+    \xx@err@ukdir#1
+    \let\xx@curr@dir\xx@dir@inv
+  \fi
+}
+
+%%<+> \CurrentBoxDir
+\newcommand*\CurrentBoxDir{
+  \if\xx@curr@dir\xx@dir@dflt y
+  \else \xx@curr@dir
+  \fi
+}
+
+\xx@driver@setup{xetex}{%       %<*xetex>
+
+\def\xx@dir@@z{z}
+\def\xx@dir@@d{d}
+
+}                               %</xetex>
+
+\ifxx@in@ptex
+\begingroup
+  \catcode`|=0 %
+\xx@driver@setup{ptex}{%        %<*ptex>
+
+\let\xx@dir@@y\xx@dir@dflt
+\let\xx@dir@@t\xx@dir@dflt
+\def\xx@dir@@z{z}
+\let\xx@dir@@d\xx@dir@dflt
+
+%%<+> \CurrentBoxDir
+\renewcommand*\CurrentBoxDir{
+  \if\xx@curr@dir\xx@dir@dflt
+    |ifydir y
+    |else|iftdir t
+    |else|ifddir d
+    |else \xx@dir@inv
+    |fi|fi|fi
+  \else \xx@curr@dir
+  \fi
+}
+
+}                               %</ptex>
+\endgroup
+\fi
+
+%%<+> \DirBoxYoko
+\newcommand*\DirBoxYoko{
+  \xx@dirbox@gen y
+}
+
+%%<+> \DirBoxTate
+\newcommand*\DirBoxTate{
+  \xx@dirbox@gen t
+}
+
+%%<+> \DirBoxRotR
+\newcommand*\DirBoxRotR{
+  \xx@dirbox@gen z
+}
+
+%%<+> \DirBoxRotL
+\newcommand*\DirBoxRotL{
+  \xx@dirbox@gen d
+}
+
+\def\xx@dirbox@gen#1{
+  \expandafter\let\expandafter\xx@dirbox@dirhndl
+   \csname xx@dirh@@\CurrentBoxDir @#1\endcsname
+  \ifx\xx@dirbox@dirhndl\relax
+    \xx@err@usdch\CurrentBoxDir#1
+  \else \expandafter\xx@dirbox@gen@a
+  \fi
+}
+
+%% Trivial direction handlers.
+\let\xx@dirh@@y@y\@empty
+\let\xx@dirh@@t@t\@empty
+\let\xx@dirh@@z@z\@empty
+\let\xx@dirh@@d@d\@empty
+
+%% \xx@local@dirbox
+\def\xx@local@dirbox{
+  \begingroup
+  \let\DirBoxPostProcess\xx@local@dirbox@a
+}
+\def\xx@local@dirbox@a{
+  \endgroup
+}
+
+%% \xx@dirh@@y@t
+\def\xx@dirh@@y@t{
+  \xx@local@dirbox
+  \SetCurrentBoxDir{t}
+  \RawDirBoxTateInYoko
+}
+  
+%% \xx@dirh@@t@y
+\def\xx@dirh@@t@y{
+  \xx@local@dirbox
+  \SetCurrentBoxDir{y}
+  \RawDirBoxYokoInTate
+}
+
+%--------------------------------------- all done
+\endlinechar=13
+\endinput
+%% EOF
