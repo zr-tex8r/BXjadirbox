@@ -23,12 +23,15 @@
 }
 
 \endlinechar=-1
-%--------------------------------------- helpers
+%---------------------------------------
+%% Helper stuffs
 
 %% variables
 \newbox\xx@tempbox
+\newif\ifCJK@vertical@
 
 %% \xx@if@primitive\CS
+\@onlypreamble\xx@if@primitive
 \def\xx@if@primitive#1{
   \edef\xx@tempa{\string#1}
   \edef\xx@tempb{\meaning#1}
@@ -70,39 +73,44 @@
   \expandafter#1\romannumeral-`>
 }
 
-%--------------------------------------- driver choise
+%---------------------------------------
+%% Driver Selection
 
 %% driver setting procedures
-\def\xx@driver@@plain{\relax}
+\@onlypreamble\xx@driver@@plain
+\def\xx@driver@@plain{\relax} % no-op
+\@onlypreamble\xx@driver@@ptex
 \let\xx@driver@@ptex\@empty
+\@onlypreamble\xx@driver@@xetex
 \let\xx@driver@@xetex\@empty
-\ifxx@in@ptex\else
-  \def\xx@driver@@ptex{
-    \xx@error{The engine does not support driver 'ptex'}
-    \@ehc
-  }
-\fi
+\@onlypreamble\xx@driver@@cjkvert
+\let\xx@driver@@cjkvert\@empty
 
-%% \xx@driver@setup{<driver>}
-\def\xx@driver@setup#1{%
-  \expandafter\g@addto@macro\csname xx@driver@@#1\endcsname
+%% \xx@driver@setup{<driver>,...}{<text>}
+\def\xx@driver@setup#1#2{
+  \@for\xx@x:=#1\do{
+    \expandafter\g@addto@macro\csname xx@driver@@\xx@x\endcsname
+     {#2}
+  }
 }
+
+%% \xx@driver
+\let\xx@driver\relax
 
 %%<*> \dirboxinitialize
 \@onlypreamble\dirboxinitialize
 \newcommand*\dirboxinitialize{
   \ifxx@in@ptex
     \def\xx@tempa{ptex}
-  \else\ifxx@in@xetex
-    \def\xx@tempa{xetex}
-  \else\ifxx@in@luatex
-    \def\xx@tempa{xetex}
   \else
     \def\xx@tempa{plain}
-    \@ifpackageloaded{CJKvert}{
-      \def\xx@tempa{CJKvert}
+    \@ifpackageloaded{fontspec}{
+      \def\xx@tempa{xetex}
     }{}
-  \fi\fi\fi
+    \@ifpackageloaded{CJKvert}{
+      \def\xx@tempa{cjkvert}
+    }{}
+  \fi
   \dirboxinitializewith\xx@tempa
 }
 
@@ -121,14 +129,38 @@
     \xx@tempa
   \fi
   \xx@info{Initialized with driver '\xx@driver'}
+  % Avoids multiple initialization.
+  \def\dirboxinitializewith#1{
+    \xx@warn{Already initialized}
+  }
 }
 
 %% begin-document hook
 \AtBeginDocument{
-  \dirboxinitialize
+  % Initialize, if not yet done.
+  \ifx\xx@driver\relax
+    \dirboxinitialize
+  \fi
 }
 
-%--------------------------------------- level-1
+%% Checks the engine if driver is 'ptex'
+\ifxx@in@ptex\else
+\xx@driver@setup{ptex}{
+  \xx@error{The engine does not support driver 'ptex'}
+  \@ehc
+}
+\fi
+
+%% Ascertains that the prerequisite package is loaded.
+\xx@driver@setup{cjkvert}{
+  \@ifpackageloaded{CJKvert}{}{%else
+    \RequirePackage{CJKvert}
+  }
+}
+
+%---------------------------------------
+%% Level-1 Direction-Box Commands
+% The commands here are driver-independent.
 
 \@namedef{xx@bc\string\vbox}{\xx@do\vbox}
 \@namedef{xx@bc\string\vtop}{\xx@do\vbox}
@@ -165,7 +197,7 @@
 % (where \BOXCMD is one of \vbox / \vtop / \vcenter / \hbox
 \newcommand\RawDirBoxTateInYoko{
   \let\xx@do@usebox\UseDirBoxTateInYoko
-  \xx@dirbox@gen
+  \xx@rdirbox@gen
 }
 
 %%<+> \RawDirBoxTateInYoko[[\global]\setbox<box-reg>=]
@@ -223,23 +255,61 @@
 %% \DirBoxPostProcess
 \let\DirBoxPostProcess\@empty
 
-%--------------------------------------- level-2 
+%---------------------------------------
+%% Font Switching
 
-\providecommand*\SwitchFontToYoko{
-\typeout{[[SwitchFontToYoko]]}
-}
-\providecommand*\SwitchFontToTate{
-\typeout{[[SwitchFontToTate]]}
+%%<+> \SwitchFontToYoko
+\newcommand*\SwitchFontToYoko{
 }
 
-%--------------------------------------- level-2 
+%%<+> \SwitchFontToTate
+\newcommand*\SwitchFontToTate{
+}
+
+\xx@driver@setup{xetex}{%       %<*xetex>
+%% Patch to \defaultfontfeatures
+
+}                               %</xetex>
+\xx@driver@setup{cjkvert}{%     %<*cjkvert>
+\renewcommand*\SwitchFontToYoko{
+  \ifCJK@vertical@
+    \CJKhorz
+    \aftergroup\CJKvert
+  \fi
+}
+\renewcommand*\SwitchFontToTate{
+  \ifCJK@vertical@\else
+    \CJKvert
+    \aftergroup\CJKhorz
+  \fi
+}
+
+\newcommand*\setlogicalpagedir[1]{
+  \expandafter\let\expandafter\xx@init@cjkdir
+   \csname xx@cjkdir@@#1\endcsname
+  \ifx\xx@init@cjkdir\relax
+    \xx@err@ukdir#1
+  \else
+    \SetCurrentBoxDir{#1}
+  \fi
+}
+\def\xx@cjkdir@@y{\CJKhorz}
+\def\xx@cjkdir@@t{\CJKvert}
+\let\xx@init@cjkdir\CJKhorz
+\AtBeginDocument{
+  \xx@init@cjkdir
+}
+}                               %</cjkvert>
+
+%---------------------------------------
+%% Handling Direction Information
 
 %% \xx@curr@dir
-\def\xx@dir@dflt{*}
+\def\xx@dir@dyna{*}
 \def\xx@dir@inv{?}
-\let\xx@dir@@y\xx@dir@dflt
-\def\xx@dir@@t{t}
-\let\xx@curr@dir\xx@dir@dflt
+\let\xx@dir@@y\xx@dir@dyna
+\def\xx@dir@@z{z}
+\let\xx@curr@dir\xx@dir@dyna
 
 %%<+> \SetCurrentBoxDir{<dir>}
 \newcommand*\SetCurrentBoxDir[1]{
@@ -253,31 +323,31 @@
 
 %%<+> \CurrentBoxDir
 \newcommand*\CurrentBoxDir{
-  \if\xx@curr@dir\xx@dir@dflt y
+  \if\xx@curr@dir\xx@dir@dyna y
   \else \xx@curr@dir
   \fi
 }
 
-\xx@driver@setup{xetex}{%       %<*xetex>
-
-\def\xx@dir@@z{z}
+\xx@driver@setup{xetex,cjkvert}{%<*xetex|cjkvert>
+%% more directions supported
+\def\xx@dir@@t{t}
 \def\xx@dir@@d{d}
-
-}                               %</xetex>
+}                               %</xetex|cjkvert>
 
 \ifxx@in@ptex
 \begingroup
   \catcode`|=0 %
 \xx@driver@setup{ptex}{%        %<*ptex>
-
-\let\xx@dir@@y\xx@dir@dflt
-\let\xx@dir@@t\xx@dir@dflt
-\def\xx@dir@@z{z}
-\let\xx@dir@@d\xx@dir@dflt
+%% more directions supported
+% Declares y, t, d to be dynamic.
+\let\xx@dir@@y\xx@dir@dyna
+\let\xx@dir@@t\xx@dir@dyna
+\let\xx@dir@@d\xx@dir@dyna
 
 %%<+> \CurrentBoxDir
 \renewcommand*\CurrentBoxDir{
-  \if\xx@curr@dir\xx@dir@dflt
+  \if\xx@curr@dir\xx@dir@dyna
+    % 'dynamic' directions
     |ifydir y
     |else|iftdir t
     |else|ifddir d
@@ -290,6 +360,9 @@
 }                               %</ptex>
 \endgroup
 \fi
+
+%---------------------------------------
+%% Level-2 Direction-Box Commands
 
 %%<+> \DirBoxYoko
 \newcommand*\DirBoxYoko{
@@ -316,7 +389,7 @@
    \csname xx@dirh@@\CurrentBoxDir @#1\endcsname
   \ifx\xx@dirbox@dirhndl\relax
     \xx@err@usdch\CurrentBoxDir#1
-  \else \expandafter\xx@dirbox@gen@a
+  \else \expandafter\xx@dirbox@dirhndl
   \fi
 }
 
@@ -335,18 +408,38 @@
   \endgroup
 }
 
+%% \xx@dirh@@y@z
+\def\xx@dirh@@y@z{
+  \xx@local@dirbox
+  \SetCurrentBoxDir{z}
+  \RawDirBoxTateInYoko
+}
+
+%% \xx@dirh@@z@y
+\def\xx@dirh@@z@y{
+  \xx@local@dirbox
+  \SetCurrentBoxDir{y}
+  \RawDirBoxYokoInTate
+}
+
+\xx@driver@setup{xetex,cjkvert}{
+
 %% \xx@dirh@@y@t
 \def\xx@dirh@@y@t{
   \xx@local@dirbox
   \SetCurrentBoxDir{t}
+  \SwitchFontToTate
   \RawDirBoxTateInYoko
 }
-  
+
 %% \xx@dirh@@t@y
 \def\xx@dirh@@t@y{
   \xx@local@dirbox
   \SetCurrentBoxDir{y}
+  \SwitchFontToYoko
   \RawDirBoxYokoInTate
+}
+
 }
 
 %--------------------------------------- all done
