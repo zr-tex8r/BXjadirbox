@@ -46,7 +46,7 @@
   \xx@in@ptextrue
 }
 
-%% \ifxx@in@Xetex
+%% \ifxx@in@xetex
 \newif\ifxx@in@xetex \xx@in@xetexfalse
 \xx@if@primitive\XeTeXrevision{
   \xx@in@xetextrue
@@ -62,10 +62,20 @@
 % Makes a promise that \xx@do be executed after completing
 % \setbox that follows.
 \def\xx@do@after@setbox{
+  \let\xx@do@inject\@empty
   \afterassignment\xx@do@after@setbox@a
 }
 \def\xx@do@after@setbox@a{
   \aftergroup\xx@do
+  \xx@do@inject
+}
+
+%% \xx@do@after@setbox@with@injection{<text>}
+% Same as \xx@do@after@setbox, except that <text> is
+% injected at the head of the box.
+\def\xx@do@after@setbox@with@injection#1{
+  \def\xx@do@inject{#1}%
+  \afterassignment\xx@do@after@setbox@a
 }
 
 %% \xx@with@burst\CS
@@ -98,6 +108,7 @@
 \let\xx@driver\relax
 
 %%<*> \dirboxinitialize
+% Does initialization, with auto-detected driver.
 \@onlypreamble\dirboxinitialize
 \newcommand*\dirboxinitialize{
   \ifxx@in@ptex
@@ -114,7 +125,7 @@
   \dirboxinitializewith\xx@tempa
 }
 
-%%<*> \dirboxinitializewith
+%%<*> \dirboxinitializewith{<driver>}
 \@onlypreamble\dirboxinitializewith
 \newcommand*\dirboxinitializewith[1]{ 
   \edef\xx@driver{#1}
@@ -162,77 +173,21 @@
 %% Level-1 Direction-Box Commands
 % The commands here are driver-independent.
 
+%% \xx@scan@boxcmd
 \@namedef{xx@bc\string\vbox}{\xx@do\vbox}
 \@namedef{xx@bc\string\vtop}{\xx@do\vbox}
 \@namedef{xx@bc\string\vcenter}{\xx@do\vbox}
 \@namedef{xx@bc\string\hbox}{\xx@do\hbox}
 \@namedef{xx@bc\string\setbox}{\xx@handle@setbox}
 \@namedef{xx@bc\string\global}{\xx@handle@global}
-
-%% \xx@dirbox@error\CS
-\def\xx@dirbox@error#1{
-  \xx@err@ivbxc#1
-  \vbox
-}
-
-%%<+> \UseDirBoxTateInYoko{<box-reg>}
-\newcommand*\UseDirBoxTateInYoko[1]{
-  \vbox{
-    \hbox{\rotatebox{-90}{\copy#1}}
-    \kern\z@
-  }%
-}
-
-%%<+> \UseDirBoxYokoInTate{<box-reg>}
-\newcommand*\UseDirBoxYokoInTate[1]{
-  \vbox{
-    \hbox{\rotatebox{90}{\copy#1}}
-    \kern-.5\wd#1\relax
-    \hrule\@width\z@\@height\z@\@depth.5\wd#1\relax
-  }%
-}
-
-%%<+> \RawDirBoxTateInYoko[[\global]\setbox<box-reg>=]
-%       \BOXCMD<box-spec>{<text>}
-% (where \BOXCMD is one of \vbox / \vtop / \vcenter / \hbox
-\newcommand\RawDirBoxTateInYoko{
-  \let\xx@do@usebox\UseDirBoxTateInYoko
-  \xx@rdirbox@gen
-}
-
-%%<+> \RawDirBoxTateInYoko[[\global]\setbox<box-reg>=]
-%       \BOXCMD<box-spec>{<text>}
-% (where \BOXCMD is one of \vbox / \vtop / \vcenter / \hbox
-\newcommand\RawDirBoxYokoInTate{
-  \let\xx@do@usebox\UseDirBoxYokoInTate
-  \xx@rdirbox@gen
-}
-
-%% \xx@rdirbox@gen...
-\def\xx@rdirbox@gen{
-  \let\xx@do\xx@rdirbox@gen@b
-  \let\xx@do@assign\@empty
-  \xx@with@burst\xx@rdirbox@gen@a
+\def\xx@scan@boxcmd{
+  \xx@with@burst\xx@scan@boxcmd@a
 }
   % #1 is either \BOXCMD, \setbox or \global
-\def\xx@rdirbox@gen@a#1{
-  \@nameuse{xx@bc\meaning#1}\xx@rdirbox@error#1%
+\def\xx@scan@boxcmd@a#1{
+  \@nameuse{xx@bc\meaning#1}\xx@boxcmd@error#1%
   % if #1 is unexpected thing, then \@nameuse results in
-  % \relax and \xx@rdirbox@error is invoked.
-}
-  % #2(= \xx@rdirbox@error) is discarded.
-\def\xx@rdirbox@gen@b#1#2#3{
-  \let\xx@do@boxcmd#3% = \BOXCMD
-  \let\xx@do\xx@rdirbox@gen@c
-  \xx@do@after@setbox
-  \setbox\xx@tempbox=#1% 'inner' box command
-}
-  % Invoked after \setbox is done.
-\def\xx@rdirbox@gen@c{
-  \xx@do@assign% '\setbox...=' or empty
-  \xx@do@boxcmd{\xx@do@usebox\xx@tempbox}%
-  \DirBoxPostProcess
-  \let\DirBoxPostProcess\relax
+  % \relax and \xx@boxcmd@error is invoked.
 }
 
 %% \xx@handle@global...
@@ -249,12 +204,147 @@
   % #2 is picked up so as to gobble spaces.
 \def\xx@handle@setbox@a#1=#2{
   \def\xx@do@assign{#1=}
-  \xx@with@burst\xx@rdirbox@gen@a#2%
+  % Back to the beginning
+  \xx@scan@boxcmd#2
 }
 
-%% \DirBoxPostProcess
-\let\DirBoxPostProcess\@empty
+%% \xx@boxcmd@error\CS
+\def\xx@boxcmd@error#1{
+  \xx@err@ivbxc#1
+  \vbox
+}
 
+%%<+> \UseDirBoxRotRInYoko{<box-reg>}
+\newcommand*\UseDirBoxRotRInYoko[1]{
+  \vbox{
+    \hbox{\rotatebox{-90}{\copy#1}}
+    \kern\z@
+  }%
+}
+
+%%<+> \UseDirBoxRotLInYoko{<box-reg>}
+\newcommand*\UseDirBoxRotLInYoko[1]{
+  \vbox{
+    \hbox{\rotatebox{90}{\copy#1}}
+    \kern\z@
+  }%
+}
+
+%%<+> \UseDirBoxYokoInRotR{<box-reg>}
+\newcommand*\UseDirBoxYokoInRotR[1]{
+  \vbox{
+    \hbox{\rotatebox{90}{\copy#1}}
+    \kern-.5\wd#1\relax
+    \hrule\@width\z@\@height\z@\@depth.5\wd#1\relax
+  }%
+}
+
+%%<+> \RawDirBoxRotRInYoko[[\global]\setbox<box-reg>=]
+%       \BOXCMD<box-spec>{<text>}
+% (where \BOXCMD is one of \vbox / \vtop / \vcenter / \hbox
+\newcommand\RawDirBoxRotRInYoko{
+  \let\xx@do@usebox\UseDirBoxRotRInYoko
+  \xx@rdirbox@gen
+}
+
+%%<+> \RawDirBoxRotLInYoko[[\global]\setbox<box-reg>=]
+%       \BOXCMD<box-spec>{<text>}
+% (where \BOXCMD is one of \vbox / \vtop / \vcenter / \hbox
+\newcommand\RawDirBoxRotLInYoko{
+  \let\xx@do@usebox\UseDirBoxRotLInYoko
+  \xx@rdirbox@gen
+}
+
+%%<+> \RawDirBoxYokoInRotR[[\global]\setbox<box-reg>=]
+%       \BOXCMD<box-spec>{<text>}
+% (where \BOXCMD is one of \vbox / \vtop / \vcenter / \hbox
+\newcommand\RawDirBoxYokoInRotR{
+  \let\xx@do@usebox\UseDirBoxYokoInRotR
+  \xx@rdirbox@gen
+}
+
+%% \xx@rdirbox@gen...
+\def\xx@rdirbox@gen{
+  \let\xx@do\xx@rdirbox@gen@b
+  \let\xx@do@assign\@empty
+  \xx@scan@boxcmd
+}
+  % #2(= \xx@boxcmd@error) is discarded.
+\def\xx@rdirbox@gen@b#1#2#3{
+  \let\xx@do@boxcmd#3% = \BOXCMD
+  \let\xx@do\xx@rdirbox@gen@c
+  \xx@do@after@setbox
+  \setbox\xx@tempbox=#1% 'inner' box command
+}
+  % Invoked after \setbox is done.
+\def\xx@rdirbox@gen@c{
+  \xx@do@assign% '\setbox...=' or empty
+  \xx@do@boxcmd{\xx@do@usebox\xx@tempbox}%
+  \xx@rdirbox@postproc
+  \let\xx@rdirbox@postproc\relax
+}
+
+%% \xx@rdirbox@postproc
+\let\xx@rdirbox@postproc\@empty
+
+%---------------------------------------
+%% Level-1 ptex wrapper
+\ifxx@in@ptex                   %<*pTeX>
+
+%%<+> \InjectDirCmd\DIRCMD
+\newcommand*\InjectDirCmd[1]{
+  \def\xx@args{{#1}}
+  \let\xx@do\xx@inject@dircmd@a
+  \let\xx@do@assign\@empty
+  \xx@scan@boxcmd
+}
+\def\xx@inject@dircmd@a#1#2#3{
+  \ifx\xx@args\xx@args@ROTR
+    \xx@inject@rotr#3
+  \fi
+  \let\xx@do@boxcmd#3% = \BOXCMD
+  \let\xx@do\xx@inject@dircmd@b
+  \ifx#3\vcenter
+    \def\xx@rhs@assign{\vcenter{\box\xx@tempbox}}
+    \def\xx@tempa{\vbox}
+  \else
+    \def\xx@rhs@assign{\box\xx@tempbox}
+    \def\xx@tempa{#3}
+  \fi
+  \expandafter\xx@do@after@setbox@with@injection\xx@args
+  \setbox\xx@tempbox=\xx@tempa
+}
+  % Invoked after \setbox is done.
+\def\xx@inject@dircmd@b{
+  \xx@do@assign\xx@rhs@assign
+  \xx@rdirbox@postproc
+  \let\xx@rdirbox@postproc\relax
+}
+
+%%<+> \ROTR
+\newcommand*{\ROTR}{\noexpand\xx@ROTR}
+
+%% \xx@args@ROTR
+\def\xx@args@ROTR{{\ROTR}}
+
+%% \xx@inject@rotr\BOXCMD
+\def\xx@inject@rotr#1{
+  \ifx#1\hbox
+    \def\xx@args{{\tate
+     $#1\bgroup\aftergroup\xx@inject@rotr@a}}
+  \else
+    \def\xx@args{{\tate
+     \hbox\bgroup$#1\bgroup\aftergroup\xx@inject@rotr@b}}
+  \fi
+}
+\def\xx@inject@rotr@a{
+  $\egroup
+}
+\def\xx@inject@rotr@b{
+  $\egroup\egroup
+}
+
+\fi                             %</pTeX>
 %---------------------------------------
 %% Font Switching
 
@@ -309,6 +399,7 @@
 \def\xx@dir@inv{?}
 \let\xx@dir@@y\xx@dir@dyna
 \def\xx@dir@@z{z}
+\def\xx@dir@@d{d}
 \let\xx@curr@dir\xx@dir@dyna
 
 %%<+> \SetCurrentBoxDir{<dir>}
@@ -331,7 +422,6 @@
 \xx@driver@setup{xetex,cjkvert}{%<*xetex|cjkvert>
 %% more directions supported
 \def\xx@dir@@t{t}
-\def\xx@dir@@d{d}
 }                               %</xetex|cjkvert>
 
 \ifxx@in@ptex
@@ -402,7 +492,7 @@
 %% \xx@local@dirbox
 \def\xx@local@dirbox{
   \begingroup
-  \let\DirBoxPostProcess\xx@local@dirbox@a
+  \let\xx@rdirbox@postproc\xx@local@dirbox@a
 }
 \def\xx@local@dirbox@a{
   \endgroup
@@ -412,24 +502,31 @@
 \def\xx@dirh@@y@z{
   \xx@local@dirbox
   \SetCurrentBoxDir{z}
-  \RawDirBoxTateInYoko
+  \RawDirBoxRotRInYoko
+}
+
+%% \xx@dirh@@y@d
+\def\xx@dirh@@y@d{
+  \xx@local@dirbox
+  \SetCurrentBoxDir{d}
+  \RawDirBoxRotLInYoko
 }
 
 %% \xx@dirh@@z@y
 \def\xx@dirh@@z@y{
   \xx@local@dirbox
   \SetCurrentBoxDir{y}
-  \RawDirBoxYokoInTate
+  \RawDirBoxYokoInRotR
 }
 
-\xx@driver@setup{xetex,cjkvert}{
+\xx@driver@setup{xetex,cjkvert}{%<*xetex|cjkvert>
 
 %% \xx@dirh@@y@t
 \def\xx@dirh@@y@t{
   \xx@local@dirbox
   \SetCurrentBoxDir{t}
   \SwitchFontToTate
-  \RawDirBoxTateInYoko
+  \RawDirBoxRotRInYoko
 }
 
 %% \xx@dirh@@t@y
@@ -437,12 +534,49 @@
   \xx@local@dirbox
   \SetCurrentBoxDir{y}
   \SwitchFontToYoko
-  \RawDirBoxYokoInTate
+  \RawDirBoxYokoInRotR
 }
 
+}                               %</xetex|cjkvert>
+
+\xx@driver@setup{ptex}{%        %<*ptex>
+
+%% \xx@dirh@@@@y
+\def\xx@dirh@@@@y{
+  \xx@local@dirbox
+  \SetCurrentBoxDir{y}
+  \InjectDirCmd\yoko
+}
+%% \xx@dirh@@@@z
+\def\xx@dirh@@@@z{
+  \xx@local@dirbox
+  \SetCurrentBoxDir{z}
+  \InjectDirCmd\ROTR
+}
+%% \xx@dirh@@@@t
+\def\xx@dirh@@@@t{
+  \xx@local@dirbox
+  \SetCurrentBoxDir{t}
+  \InjectDirCmd\tate
+}
+%% \xx@dirh@@@@d
+\def\xx@dirh@@@@d{
+  \xx@local@dirbox
+  \SetCurrentBoxDir{d}
+  \InjectDirCmd\dtou
 }
 
-%--------------------------------------- all done
+%% \xx@dirh@@y@t
+\let\xx@dirh@@y@z\xx@dirh@@@@z
+\let\xx@dirh@@y@t\xx@dirh@@@@t
+\let\xx@dirh@@y@d\xx@dirh@@@@d
+\let\xx@dirh@@z@y\xx@dirh@@@@y
+\let\xx@dirh@@t@y\xx@dirh@@@@y
+
+}                               %</ptex>
+
+%---------------------------------------
+% All done
 \endlinechar=13
 \endinput
 %% EOF
