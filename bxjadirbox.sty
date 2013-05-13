@@ -30,6 +30,11 @@
 \newbox\xx@tempbox
 \newif\ifCJK@vertical@
 
+%% \xx@letcs\CSa{<nameb>}
+\def\xx@letcs#1#2{
+  \expandafter\let\expandafter#1\csname #2\endcsname
+}
+
 %% \xx@if@primitive\CS
 \@onlypreamble\xx@if@primitive
 \def\xx@if@primitive#1{
@@ -83,6 +88,11 @@
   \expandafter#1\romannumeral-`>
 }
 
+%% \xx@triv@dispatch{<box-reg>}
+\def\xx@triv@dispatch#1{
+  {\copy#1}
+}
+
 %---------------------------------------
 %% Driver Selection
 
@@ -129,8 +139,7 @@
 \@onlypreamble\dirboxinitializewith
 \newcommand*\dirboxinitializewith[1]{ 
   \edef\xx@driver{#1}
-  \expandafter\let\expandafter\xx@tempa
-   \csname xx@driver@@\xx@driver\endcsname
+  \xx@letcs\xx@tempa{xx@driver@@\xx@driver}
   \ifx\xx@tempa\relax
     \xx@error{Unknown driver '\xx@driver' specified}
      {Driver 'plain' is used instead.}
@@ -201,11 +210,14 @@
   \xx@handle@setbox@a\setbox
 }
   % Called as \xx@handle@setbox@a[\global]\setbox...=\BOXCMD
-  % #2 is picked up so as to gobble spaces.
-\def\xx@handle@setbox@a#1=#2{
-  \def\xx@do@assign{#1=}
+  % #3 is picked up so as to gobble spaces.
+\def\xx@handle@setbox@a#1#2=#3{
+  \def\xx@do@assign{#1#2=}
+  \ifx#1\setbox% is local assignment
+    \def\xx@do@refer{#2}% used in \xx@takeout@box
+  \fi
   % Back to the beginning
-  \xx@scan@boxcmd#2
+  \xx@scan@boxcmd#3
 }
 
 %% \xx@boxcmd@error\CS
@@ -265,7 +277,9 @@
 
 %% \xx@rdirbox@gen...
 \def\xx@rdirbox@gen{
+  \xx@preproc@dispatcher
   \let\xx@do\xx@rdirbox@gen@b
+  \let\xx@do@refer\relax
   \let\xx@do@assign\@empty
   \xx@scan@boxcmd
 }
@@ -278,8 +292,13 @@
 }
   % Invoked after \setbox is done.
 \def\xx@rdirbox@gen@c{
-  \xx@do@assign% '\setbox...=' or empty
-  \xx@do@boxcmd{\xx@do@usebox\xx@tempbox}%
+  \ifx\xx@def@dispatcher\relax
+    \xx@do@assign% '\setbox...=' or empty
+    \xx@do@boxcmd{\xx@do@usebox\xx@tempbox}
+  \else
+    \xx@do@assign\box\xx@tempbox
+    \xx@def@dispatcher\xx@do@usebox
+  \fi
   \xx@rdirbox@postproc
   \let\xx@rdirbox@postproc\relax
 }
@@ -287,14 +306,40 @@
 %% \xx@rdirbox@postproc
 \let\xx@rdirbox@postproc\@empty
 
+%% \xx@preproc@dispatcher
+\def\xx@preproc@dispatcher{
+  \expandafter\xx@preproc@dispatcher@a\xx@dispatcher\relax\@nil
+}
+\def\xx@preproc@dispatcher@a#1#2\@nil{
+  \ifx#1\relax
+    \let\xx@def@dispatcher\relax
+  \else
+    % \xx@dispatch must not be propagated to inner boxes.
+    \let\xx@dispatcher\relax
+    \def\xx@def@dispatcher{\global\let#1}
+  \fi
+}
+
+%% \xx@takeout@box
+\newbox\xx@g@takeout
+\def\xx@takeout@box{
+  \global\setbox\xx@g@takeout=\box\xx@do@refer
+  \xdef\xx@takeout@code{
+    \setbox\xx@do@refer=\box\xx@g@takeout
+  }
+  \aftergroup\xx@takeout@code
+}
+
 %---------------------------------------
 %% Level-1 ptex wrapper
 \ifxx@in@ptex                   %<*pTeX>
 
 %%<+> \InjectDirCmd\DIRCMD
 \newcommand*\InjectDirCmd[1]{
+  \xx@inject@preproc@dispatcher
   \def\xx@args{{#1}}
   \let\xx@do\xx@inject@dircmd@a
+  \let\xx@do@refer\relax
   \let\xx@do@assign\@empty
   \xx@scan@boxcmd
 }
@@ -338,10 +383,22 @@
   \fi
 }
 \def\xx@inject@rotr@a{
-  $\egroup
+  \m@th$\egroup
 }
 \def\xx@inject@rotr@b{
-  $\egroup\egroup
+  \m@th$\egroup\egroup
+}
+
+%% \xx@inject@preproc@dispatcher
+\def\xx@inject@preproc@dispatcher{
+  \expandafter\xx@inject@preproc@dispatcher@a
+   \xx@dispatcher\relax\@nil
+}
+\def\xx@inject@preproc@dispatcher@a#1#2\@nil{
+  \ifx#1\relax\else
+    \let\xx@dispatcher\relax
+    \global\let#1\xx@triv@dispatch
+  \fi
 }
 
 \fi                             %</pTeX>
@@ -375,8 +432,7 @@
 }
 
 \newcommand*\setlogicalpagedir[1]{
-  \expandafter\let\expandafter\xx@init@cjkdir
-   \csname xx@cjkdir@@#1\endcsname
+  \xx@letcs\xx@init@cjkdir{xx@cjkdir@@#1}
   \ifx\xx@init@cjkdir\relax
     \xx@err@ukdir#1
   \else
@@ -404,8 +460,7 @@
 
 %%<+> \SetCurrentBoxDir{<dir>}
 \newcommand*\SetCurrentBoxDir[1]{
-  \expandafter\let\expandafter\xx@curr@dir
-   \csname xx@dir@@#1\endcsname
+  \xx@letcs\xx@curr@dir{xx@dir@@#1}
   \ifx\xx@curr@dir\relax
     \xx@err@ukdir#1
     \let\xx@curr@dir\xx@dir@inv
@@ -454,35 +509,29 @@
 %---------------------------------------
 %% Level-2 Direction-Box Commands
 
-%%<+> \DirBoxYoko
-\newcommand*\DirBoxYoko{
-  \xx@dirbox@gen y
-}
-
-%%<+> \DirBoxTate
-\newcommand*\DirBoxTate{
-  \xx@dirbox@gen t
-}
-
-%%<+> \DirBoxRotR
-\newcommand*\DirBoxRotR{
-  \xx@dirbox@gen z
-}
-
-%%<+> \DirBoxRotL
-\newcommand*\DirBoxRotL{
-  \xx@dirbox@gen d
-}
-
-\def\xx@dirbox@gen#1{
-  \expandafter\let\expandafter\xx@dirbox@dirhndl
-   \csname xx@dirh@@\CurrentBoxDir @#1\endcsname
+%%<*> \DirBox{<dir>}...
+\newcommand*\DirBox[1]{
+  \let\xx@dispatcher\relax
+  \xx@letcs\xx@dirbox@dirhndl{xx@dirh@@\CurrentBoxDir @#1}
   \ifx\xx@dirbox@dirhndl\relax
     \xx@err@usdch\CurrentBoxDir#1
-  \else \expandafter\xx@dirbox@dirhndl
   \fi
+  \xx@dirbox@dirhndl
 }
 
+%% \xx@dispatcher
+\let\xx@dispatcher\relax
+
+%%<+> \PrepareDIrBox{<dir>}\CS{<box-reg>}=\BOXCMD{<text>}
+\newcommand*\PrepareDirBox[2]{
+  \def\xx@dispatcher{#2}
+  \xx@letcs\xx@dirbox@dirhndl{xx@dirh@@\CurrentBoxDir @#1}
+  \ifx\xx@dirbox@dirhndl\relax
+    \xx@err@usdch\CurrentBoxDir#1
+    \let#2\xx@triv@dispatch
+  \fi
+  \xx@dirbox@dirhndl\setbox
+}
 %% Trivial direction handlers.
 \let\xx@dirh@@y@y\@empty
 \let\xx@dirh@@t@t\@empty
@@ -492,9 +541,10 @@
 %% \xx@local@dirbox
 \def\xx@local@dirbox{
   \begingroup
-  \let\xx@rdirbox@postproc\xx@local@dirbox@a
+    \let\xx@rdirbox@postproc\xx@local@dirbox@a
 }
 \def\xx@local@dirbox@a{
+    \xx@takeout@box
   \endgroup
 }
 
@@ -574,6 +624,87 @@
 \let\xx@dirh@@t@y\xx@dirh@@@@y
 
 }                               %</ptex>
+
+%---------------------------------------
+
+%% \xx@dirparbox@opt\CS
+% Reads optional arguments  (dir, pos, height, valign)and
+% goes to \CS.
+\def\xx@dirparbox@opt#1{
+  \let\xx@next=#1
+  \@ifnextchar<
+   {\xx@dirparbox@opt@a}
+   {\xx@dirparbox@opt@b}
+}
+\def\xx@dirparbox@opt@a<#1>{
+  \xx@dirparbox@opt@b{#1}
+}
+\def\xx@dirparbox@opt@b#1{
+  \edef\xx@opt@dir{#1}
+  \@testopt\xx@dirparbox@opt@c{c}
+}
+\def\xx@dirparbox@opt@c[#1]{
+  \edef\xx@opt@pos{#1}
+  \@testopt\xx@dirparbox@opt@d{}
+}
+\def\xx@dirparbox@opt@d[#1]{
+  \edef\xx@opt@height{#1}
+  \@testopt\xx@dirparbox@opt@e{s}
+}
+\def\xx@dirparbox@opt@e[#1]{
+  \edef\xx@opt@valign{#1}
+  \xx@next
+}
+
+%% \xx@make@box@vars
+\def\xx@make@box@vars{
+  \def\width{\wd\@tempboxa}
+  \def\height{\ht\@tempboxa}
+  \def\depth{\dp\@tempboxa}
+  \let\totalheight\@ovri
+  \totalheight\height
+  \advance\totalheight\depth
+}
+
+\def\xx@dirparbox@setparam{
+  \edef\xx@curr@dir{\CurrentBoxDir}
+  \ifx\xx@opt@dir\@empty
+    \let\xx@opt@dir\xx@curr@dir
+  \fi
+  \ifx\xx@opt@dir\xx@curr@dir
+    \@nameuse{xx@dpbi@@\xx@opt@pos}
+  \else
+    \xx@letcs\xx@tempa
+     {xx@dpb@@\xx@curr@dir @\xx@opt@dir @\xx@opt@pos}
+    \ifx\xx@tempa\relax
+      \xx@err@ivdpb\xx@curr@dir\xx@opt@dir\xx@opt@pos
+      \@nameuse{xx@dpbi@@\xx@opt@pos}
+    \else \xx@tempa
+    \fi
+  \fi
+}
+
+%%<*> \dirparbox
+\newcommand*\dirparbox{
+  \xx@dirparbox@opt\xx@dir@parbox@a
+}
+\def\xx@dirparbox@a#1#2{%<width><text>
+  \leavevmode
+  \begingroup
+    \xx@dirparbox@setparam
+    \xx@dirbox@gen\xx@opt@dir\setbox\@tempboxa=\vbox{
+      \hsize=\@tempdima
+      \@parboxrestore
+      \xx@adjustbaselines
+      #2\@@par
+    }
+    %
+    \ifx\xx@opt@height\@empty\else
+      \setlength\@tempdimb{\xx@opt@height}
+      \def\@parboxto{to\@tempdimb}
+    \fi
+     
+}
 
 %---------------------------------------
 % All done
