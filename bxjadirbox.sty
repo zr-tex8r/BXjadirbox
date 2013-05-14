@@ -5,35 +5,61 @@
 \NeedsTeXFormat{LaTeX2e}
 \ProvidesPackage{bxjadirbox}[2013/06/01]
 
-%%
+%% preparations
 \def\xx@pkgname{bxjadirbox}
 \def\xx@error{\PackageError\xx@pkgname}
 \def\xx@warn{\PackageWarning\xx@pkgname}
 \def\xx@info{\PackageWarning\xx@pkgname}
 \providecommand\bxDebug[1]{}
-%
-\def\xx@err@ivbxc#1{%
-  \xx@error{Invalid box command \string#1}\@ehc
-}
-\def\xx@err@ukdir#1{%
-  \xx@error{Unknown direction '#1'}\@ehc
-}
-\def\xx@err@usdch#1#2{%
-  \xx@error{Unsupported direction change (#1->#2)}\@ehc
-}
 
 \endlinechar=-1
 %---------------------------------------
-%% Helper stuffs
+% Helper stuffs
+
+\def\xx@err@ivbxc#1{
+  \xx@error{Invalid box command \string#1}\@ehc
+}
+\def\xx@err@ukdir#1{
+  \xx@error{Unknown direction '#1'}\@ehc
+}
+\def\xx@err@usdch#1#2{
+  \xx@error{Unsupported direction change (#1->#2)}\@ehc
+}
+\def\xx@err@ivdpb#1#2#3{
+  \xx@error{Unsupported direction change (#1->#2)(pos=#3)}\@ehc
+}
+\def\xx@err@uscmd{
+  \xx@error{Unsupported feature on driver '\xx@driver'}\@ehc
+}
+
+%---------------------------------------
+% Helper stuffs
 
 %% variables
 \newbox\xx@tempbox
 \newif\ifCJK@vertical@
 
+%% unique tokens
+\def\xx@end{\xx@end@}
+\def\xx@mark{\xx@mark@}
+
 %% \xx@letcs\CSa{<nameb>}
 \def\xx@letcs#1#2{
   \expandafter\let\expandafter#1\csname #2\endcsname
 }
+
+%% \xx@ensure@if@token
+\@onlypreamble\xx@ensure@if@token
+\def\xx@ensure@if@token#1{
+  \expandafter\ifx\csname#1\endcsname\relax
+    \expandafter\let\csname#1\expandafter\endcsname
+     \csname iffalse\endcsname
+  \fi
+}
+
+%% dummy if-tokens
+\xx@ensure@if@token{ifCJK@vertical@}
+\xx@ensure@if@token{ifddir}
 
 %% \xx@if@primitive\CS
 \@onlypreamble\xx@if@primitive
@@ -93,8 +119,21 @@
   {\copy#1}
 }
 
+%% \xx@testopt\Csa{<default>}
+\def\xx@testopt#1#2{
+  \kernel@ifnextchar[
+   {\xx@testopt@a#1{#2}}
+   {\xx@testopt@a#1{#2}[]}
+}
+\def\xx@testopt@a#1#2[#3]{
+  \ifx\xx@mark#3\xx@mark \expandafter\@firstoftwo
+  \else \expandafter\@secondoftwo
+  \fi{#1{#2}}{#1{#3}}
+}
+
+
 %---------------------------------------
-%% Driver Selection
+% Driver selection
 
 %% driver setting procedures
 \@onlypreamble\xx@driver@@plain
@@ -107,6 +146,7 @@
 \let\xx@driver@@cjkvert\@empty
 
 %% \xx@driver@setup{<driver>,...}{<text>}
+\@onlypreamble\xx@driver@setup
 \def\xx@driver@setup#1#2{
   \@for\xx@x:=#1\do{
     \expandafter\g@addto@macro\csname xx@driver@@\xx@x\endcsname
@@ -155,6 +195,16 @@
   }
 }
 
+%% \xx@ensure@initialize\CSa\CSb
+\@onlypreamble\xx@ensure@initialize
+\def\xx@ensure@initialize#1#2{
+  \let#1#2
+  \ifx\xx@driver\relax
+    \dirboxinitialize
+  \fi
+  #1
+}
+
 %% begin-document hook
 \AtBeginDocument{
   % Initialize, if not yet done.
@@ -178,8 +228,23 @@
   }
 }
 
+%% Checks if graphicx package is loaded.
+\@onlypreamble\xx@check@graphicx
+\def\xx@check@graphicx{
+  \@ifpackageloaded{graphics}{}{
+    \xx@error{Package 'graphicx' not loaded}\@ehc
+  }
+}
+  %NB: must be after ABD for \dirboxinitialize
+\AtBeginDocument{
+  \xx@check@graphicx
+}
+\xx@driver@setup{ptex}{
+  \let\xx@check@graphicx\relax
+}
+
 %---------------------------------------
-%% Level-1 Direction-Box Commands
+% Level-1 direction-box commands
 % The commands here are driver-independent.
 
 %% \xx@scan@boxcmd
@@ -323,15 +388,17 @@
 %% \xx@takeout@box
 \newbox\xx@g@takeout
 \def\xx@takeout@box{
-  \global\setbox\xx@g@takeout=\box\xx@do@refer
-  \xdef\xx@takeout@code{
-    \setbox\xx@do@refer=\box\xx@g@takeout
-  }
-  \aftergroup\xx@takeout@code
+  \ifx\xx@do@refer\relax\else
+    \global\setbox\xx@g@takeout=\box\xx@do@refer
+    \xdef\xx@takeout@code{
+      \setbox\xx@do@refer=\box\xx@g@takeout
+    }
+    \aftergroup\xx@takeout@code
+  \fi
 }
 
 %---------------------------------------
-%% Level-1 ptex wrapper
+% Level-1 pTeX feature wrapper
 \ifxx@in@ptex                   %<*pTeX>
 
 %%<+> \InjectDirCmd\DIRCMD
@@ -403,7 +470,7 @@
 
 \fi                             %</pTeX>
 %---------------------------------------
-%% Font Switching
+% Font switching
 
 %%<+> \SwitchFontToYoko
 \newcommand*\SwitchFontToYoko{
@@ -411,6 +478,17 @@
 
 %%<+> \SwitchFontToTate
 \newcommand*\SwitchFontToTate{
+}
+
+%%<*> \setlogicalpagedir{<dir>}
+\@onlypreamble\setlogicalpagedir
+\newcommand*\setlogicalpagedir{
+  \xx@ensure@initialize\setlogicalpagedir
+   \xx@setlogicalpagedir@default
+}
+\@onlypreamble\xx@setlogicalpagedir@default
+\def\xx@setlogicalpagedir@default#1{
+  \xx@err@uscmd
 }
 
 \xx@driver@setup{xetex}{%       %<*xetex>
@@ -431,7 +509,7 @@
   \fi
 }
 
-\newcommand*\setlogicalpagedir[1]{
+\renewcommand*\setlogicalpagedir[1]{
   \xx@letcs\xx@init@cjkdir{xx@cjkdir@@#1}
   \ifx\xx@init@cjkdir\relax
     \xx@err@ukdir#1
@@ -448,7 +526,7 @@
 }                               %</cjkvert>
 
 %---------------------------------------
-%% Handling Direction Information
+% Handling direction information
 
 %% \xx@curr@dir
 \def\xx@dir@dyna{*}
@@ -507,7 +585,7 @@
 \fi
 
 %---------------------------------------
-%% Level-2 Direction-Box Commands
+% Level-2 direction-box commands
 
 %%<*> \DirBox{<dir>}...
 \newcommand*\DirBox[1]{
@@ -522,7 +600,7 @@
 %% \xx@dispatcher
 \let\xx@dispatcher\relax
 
-%%<+> \PrepareDIrBox{<dir>}\CS{<box-reg>}=\BOXCMD{<text>}
+%%<+> \PrepareDirBox{<dir>}\CS{<box-reg>}=\BOXCMD{<text>}
 \newcommand*\PrepareDirBox[2]{
   \def\xx@dispatcher{#2}
   \xx@letcs\xx@dirbox@dirhndl{xx@dirh@@\CurrentBoxDir @#1}
@@ -532,7 +610,7 @@
   \fi
   \xx@dirbox@dirhndl\setbox
 }
-%% Trivial direction handlers.
+%% Trivial DIrBox direction handlers.
 \let\xx@dirh@@y@y\@empty
 \let\xx@dirh@@t@t\@empty
 \let\xx@dirh@@z@z\@empty
@@ -548,38 +626,32 @@
   \endgroup
 }
 
-%% \xx@dirh@@y@z
+%% DirBox direction handlers
 \def\xx@dirh@@y@z{
   \xx@local@dirbox
   \SetCurrentBoxDir{z}
   \RawDirBoxRotRInYoko
 }
-
-%% \xx@dirh@@y@d
 \def\xx@dirh@@y@d{
   \xx@local@dirbox
   \SetCurrentBoxDir{d}
   \RawDirBoxRotLInYoko
 }
-
-%% \xx@dirh@@z@y
 \def\xx@dirh@@z@y{
   \xx@local@dirbox
   \SetCurrentBoxDir{y}
   \RawDirBoxYokoInRotR
 }
 
-\xx@driver@setup{xetex,cjkvert}{%<*xetex|cjkvert>
+\xx@driver@setup{cjkvert}{%     %<*cjkvert>
 
-%% \xx@dirh@@y@t
+%% Additional direction handlers
 \def\xx@dirh@@y@t{
   \xx@local@dirbox
   \SetCurrentBoxDir{t}
   \SwitchFontToTate
   \RawDirBoxRotRInYoko
 }
-
-%% \xx@dirh@@t@y
 \def\xx@dirh@@t@y{
   \xx@local@dirbox
   \SetCurrentBoxDir{y}
@@ -587,45 +659,44 @@
   \RawDirBoxYokoInRotR
 }
 
-}                               %</xetex|cjkvert>
+}                               %</cjkvert>
 
 \xx@driver@setup{ptex}{%        %<*ptex>
 
-%% \xx@dirh@@@@y
-\def\xx@dirh@@@@y{
+%% Replaces direction handlers
+% Handlers for pTeX are only dependent on <to-dir>,
+% so first defines the necessary macros...
+\def\xx@pdirh@@y{
   \xx@local@dirbox
   \SetCurrentBoxDir{y}
   \InjectDirCmd\yoko
 }
-%% \xx@dirh@@@@z
-\def\xx@dirh@@@@z{
+\def\xx@pdirh@@z{
   \xx@local@dirbox
   \SetCurrentBoxDir{z}
   \InjectDirCmd\ROTR
 }
-%% \xx@dirh@@@@t
-\def\xx@dirh@@@@t{
+\def\xx@pdirh@@t{
   \xx@local@dirbox
   \SetCurrentBoxDir{t}
   \InjectDirCmd\tate
 }
-%% \xx@dirh@@@@d
-\def\xx@dirh@@@@d{
+\def\xx@pdirh@@d{
   \xx@local@dirbox
   \SetCurrentBoxDir{d}
   \InjectDirCmd\dtou
 }
-
-%% \xx@dirh@@y@t
-\let\xx@dirh@@y@z\xx@dirh@@@@z
-\let\xx@dirh@@y@t\xx@dirh@@@@t
-\let\xx@dirh@@y@d\xx@dirh@@@@d
-\let\xx@dirh@@z@y\xx@dirh@@@@y
-\let\xx@dirh@@t@y\xx@dirh@@@@y
+% ... and defines the actual handlers.
+\let\xx@dirh@@y@z\xx@pdirh@@z
+\let\xx@dirh@@y@t\xx@pdirh@@t
+\let\xx@dirh@@y@d\xx@pdirh@@d
+\let\xx@dirh@@z@y\xx@pdirh@@y
+\let\xx@dirh@@t@y\xx@pdirh@@y
 
 }                               %</ptex>
 
 %---------------------------------------
+% User-level paragraph box commands
 
 %% \xx@dirparbox@opt\CS
 % Reads optional arguments  (dir, pos, height, valign)and
@@ -641,17 +712,17 @@
 }
 \def\xx@dirparbox@opt@b#1{
   \edef\xx@opt@dir{#1}
-  \@testopt\xx@dirparbox@opt@c{c}
+  \xx@testopt\xx@dirparbox@opt@c{c}
 }
-\def\xx@dirparbox@opt@c[#1]{
+\def\xx@dirparbox@opt@c#1{
   \edef\xx@opt@pos{#1}
-  \@testopt\xx@dirparbox@opt@d{}
+  \xx@testopt\xx@dirparbox@opt@d{}
 }
-\def\xx@dirparbox@opt@d[#1]{
+\def\xx@dirparbox@opt@d#1{
   \edef\xx@opt@height{#1}
-  \@testopt\xx@dirparbox@opt@e{s}
+  \xx@testopt\xx@dirparbox@opt@e{\xx@opt@pos}
 }
-\def\xx@dirparbox@opt@e[#1]{
+\def\xx@dirparbox@opt@e#1{
   \edef\xx@opt@valign{#1}
   \xx@next
 }
@@ -678,32 +749,163 @@
      {xx@dpb@@\xx@curr@dir @\xx@opt@dir @\xx@opt@pos}
     \ifx\xx@tempa\relax
       \xx@err@ivdpb\xx@curr@dir\xx@opt@dir\xx@opt@pos
-      \@nameuse{xx@dpbi@@\xx@opt@pos}
+      \xx@dpbi@@c
     \else \xx@tempa
     \fi
   \fi
 }
 
+%% \xx@output@tempboxa
+\def\xx@output@tempboxa{
+  \let\hss\vss\let\unhbox\unvbox
+  \@nameuse{bm@\xx@opt@valign}
+}
+
+%% \xx@math@on / \xx@math@off
+\def\xx@math@on{$}
+\def\xx@math@off{\m@th$}
+
+%% \xx@adjust@baseline
+\let\xx@adjust@baseline\relax
+
+\xx@driver@setup{ptex}{
+\let\xx@adjust@baseline\adjustbaseline
+}
+
+%% \xx@zw
+\let\xx@zw\@ovro
+%% \xx@cjk@offset
+\let\xx@cjk@offset\@ovdx
+
+%% \xx@assign@zw
+\def\xx@assign@zw{
+  \xx@zw\f@size\p@\relax
+}
+\xx@driver@setup{ptex}{
+\def\xx@assign@zw{
+  \xx@zw1zw\relax
+}
+}
+\xx@driver@setup{cjkvert}{
+\def\xx@assign@zw{
+  \xx@zw\f@size\p@\relax
+  \xx@get@cjk@offset
+}
+}
+
+\xx@driver@setup{cjkvert}{
+%% \xx@get@cjk@offset
+\def\xx@get@cjk@offset{
+  \xx@cjk@offset\z@
+  \edef\xx@next{\noexpand\xx@get@cjk@offset@a
+    \csname \CJK@enc/\CJK@family/offset/v\endcsname}
+  \xx@next\xx@mark em\xx@mark\xx@end
+}
+\def\xx@get@cjk@offset@a#1em\xx@mark#2\xx@end{
+  \ifx\xx@mark#2\xx@mark\else
+     \xx@cjk@offset=#1\xx@zw
+  \fi
+}
+}
+
 %%<*> \dirparbox
 \newcommand*\dirparbox{
-  \xx@dirparbox@opt\xx@dir@parbox@a
+  \xx@dirparbox@opt\xx@dirparbox@a
 }
 \def\xx@dirparbox@a#1#2{%<width><text>
   \leavevmode
   \begingroup
     \xx@dirparbox@setparam
-    \xx@dirbox@gen\xx@opt@dir\setbox\@tempboxa=\vbox{
+    \setlength\@tempdima{#1}
+    \PrepareDirBox\xx@opt@dir\xx@g@dummy\@tempboxa=\vbox{
       \hsize=\@tempdima
       \@parboxrestore
-      \xx@adjustbaselines
+      \xx@adjust@baseline
       #2\@@par
     }
     %
     \ifx\xx@opt@height\@empty\else
       \setlength\@tempdimb{\xx@opt@height}
-      \def\@parboxto{to\@tempdimb}
+      \edef\@parboxto{to\the\@tempdimb}
     \fi
-     
+    \ifmmode
+      \let\xx@math@on\@empty
+      \let\xx@math@off\@empty
+    \fi
+    \xx@begin@parbox\@parboxto
+    {\xx@output@tempboxa}
+    \xx@end@parbox
+  \endgroup
+}
+
+%% dirparbox handlers
+\def\xx@dpbi@@t{
+  \let\xx@begin@parbox\vtop
+  \let\xx@end@parbox\@empty
+}
+\def\xx@dpbi@@c{
+  \def\xx@begin@parbox{\xx@math@on\vcenter}
+  \def\xx@end@parbox{\xx@math@off}
+}
+\def\xx@dpbi@@b{
+  \let\xx@begin@parbox\vbox
+  \let\xx@end@parbox\@empty
+}
+\def\xx@dpb@@y@z@t{
+  \def\xx@begin@parbox{\vtop\bgroup\kern\z@\DirBox\xx@opt@dir\vbox}
+  \def\xx@end@parbox{\egroup}
+}
+\def\xx@dpb@@y@z@c{
+  \def\xx@begin@parbox{\xx@math@on\DirBox\xx@opt@dir\vcenter}
+  \def\xx@end@parbox{\xx@math@off}
+}
+\def\xx@dpb@@y@z@b{
+  \def\xx@begin@parbox{\vbox\bgroup\DirBox\xx@opt@dir\vbox}
+  \def\xx@end@parbox{\kern\z@\egroup}
+}
+\let\xx@dpb@@y@t@t\xx@dpb@@y@z@t
+\let\xx@dpb@@y@t@c\xx@dpb@@y@z@c
+\let\xx@dpb@@y@t@b\xx@dpb@@y@z@b
+\let\xx@dpb@@y@d@t\xx@dpb@@y@z@t
+\let\xx@dpb@@y@d@c\xx@dpb@@y@z@c
+\let\xx@dpb@@y@d@b\xx@dpb@@y@z@b
+\def\xx@dpb@@z@y@t{
+  \xx@assign@zw
+  \xx@set@shift@z@y@t
+  \def\xx@begin@parbox{\raise\xx@shift@parbox\vtop\bgroup
+   \kern\z@\DirBox\xx@opt@dir\vbox}
+  \def\xx@end@parbox{\egroup}
+}
+\def\xx@set@shift@z@y@t{
+  \def\xx@shift@parbox{.5\xx@zw}
+}
+\def\xx@dpb@@z@y@c{
+  \def\xx@begin@parbox{\xx@math@on\DirBox\xx@opt@dir\vcenter}
+  \def\xx@end@parbox{\xx@math@off}
+}
+\def\xx@dpb@@z@y@b{
+  \xx@assign@zw
+  \xx@set@shift@z@y@b
+  \def\xx@begin@parbox{\raise\xx@shift@parbox\vbox\bgroup
+   \DirBox\xx@opt@dir\vbox}
+  \def\xx@end@parbox{\kern\z@\egroup}
+}
+\def\xx@set@shift@z@y@b{
+  \def\xx@shift@parbox{-.5\xx@zw}
+}
+\let\xx@dpb@@t@y@t\xx@dpb@@z@y@t
+\let\xx@dpb@@t@y@c\xx@dpb@@z@y@c
+\let\xx@dpb@@t@y@b\xx@dpb@@z@y@b
+
+\xx@driver@setup{cjkvert}{
+\def\xx@set@shift@z@y@t{
+  \@tempdima1.38\xx@zw \advance\@tempdima-\xx@cjk@offset
+  \edef\xx@shift@parbox{\the\@tempdima}
+}
+\def\xx@set@shift@z@y@b{
+  \@tempdima0.38\xx@zw \advance\@tempdima-\xx@cjk@offset
+  \edef\xx@shift@parbox{\the\@tempdima}
+}
 }
 
 %---------------------------------------
