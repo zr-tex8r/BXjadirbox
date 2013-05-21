@@ -37,7 +37,7 @@
 
 %% variables
 \newbox\xx@tempbox
-\newif\ifCJK@vertical@
+\newdimen\xx@tempdim
 
 %% unique tokens
 \def\xx@end{\xx@end@}
@@ -737,6 +737,7 @@
   \advance\totalheight\depth
 }
 
+%% \xx@dirparbox@setparam
 \def\xx@dirparbox@setparam{
   \edef\xx@curr@dir{\CurrentBoxDir}
   \ifx\xx@opt@dir\@empty
@@ -816,17 +817,17 @@
   \leavevmode
   \begingroup
     \xx@dirparbox@setparam
-    \setlength\@tempdima{#1}
-    \PrepareDirBox\xx@opt@dir\xx@g@dummy\@tempboxa=\vbox{
-      \hsize=\@tempdima
+    \setlength\xx@tempdim{#1}
+    \PrepareDirBox\xx@opt@dir\xx@g@dispatch\@tempboxa=\vbox{
+      \hsize=\xx@tempdim
       \@parboxrestore
       \xx@adjust@baseline
       #2\@@par
     }
     %
     \ifx\xx@opt@height\@empty\else
-      \setlength\@tempdimb{\xx@opt@height}
-      \edef\@parboxto{to\the\@tempdimb}
+      \setlength\xx@tempdim{\xx@opt@height}
+      \def\@parboxto{to\xx@tempdim}
     \fi
     \ifmmode
       \let\xx@math@on\@empty
@@ -906,6 +907,63 @@
   \@tempdima0.38\xx@zw \advance\@tempdima-\xx@cjk@offset
   \edef\xx@shift@parbox{\the\@tempdima}
 }
+}
+
+%---------------------------------------
+% User-level linear box commands
+
+%% \xx@dirmakebox@opt\CS
+% Reads optional arguments  (dir, pos, height, valign)and
+% goes to \CS.
+\def\xx@dirmakebox@opt#1{
+  \let\xx@next=#1
+  \@ifnextchar<
+   {\xx@dirmakebox@opt@a}
+   {\xx@dirmakebox@opt@b}
+}
+\def\xx@dirmakebox@opt@a<#1>{
+  \xx@dirmakebox@opt@b{#1}
+}
+\def\xx@dirmakebox@opt@b#1{
+  \edef\xx@opt@dir{#1}
+  \xx@testopt\xx@dirmakebox@opt@c{}
+}
+\def\xx@dirmakebox@opt@c#1{
+  \edef\xx@opt@width{#1}
+  \xx@testopt\xx@dirmakebox@opt@d{c}
+}
+\def\xx@dirmakebox@opt@d#1{
+  \edef\xx@opt@halign{#1}
+  \xx@next
+}
+
+%% \xx@dirmakebox@setparam
+\def\xx@dirmakebox@setparam{
+  \edef\xx@curr@dir{\CurrentBoxDir}
+  \ifx\xx@opt@dir\@empty
+    \let\xx@opt@dir\xx@curr@dir
+  \fi
+
+%%<*> \dirmakebox
+\newcommand*\dirmakebox{
+  \xx@dirmakebox@opt\xx@dirmakebox@a
+}
+\def\xx@dirmakebox@a#1{%<text>
+  \leavevmode
+  \begingroup
+    \xx@dirmakebox@setparam
+    \setlength\xx@tempdim{#1}
+    \PrepareDirBox\xx@opt@dir\xx@g@dispatch\@tempboxa=
+     \hbox{#1}
+    %
+    \ifx\xx@opt@width\@empty
+      \xx@g@dispatch\@tempboxa
+    \else
+      \setlength\xx@tempdim{\xx@opt@width}
+      \DirBox\xx@opt@dir\hbox to\xx@tempdim
+       {\@nameuse{bm@\xx@opt@halign}}
+    \fi
+  \endgroup
 }
 
 %---------------------------------------
